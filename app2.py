@@ -86,13 +86,16 @@ def handle_message(event):
                 away_score = game['teams']['away'].get('score')
                 home_score = game['teams']['home'].get('score')
                 if away_score is not None and home_score is not None:
-                    line = f"{away_cn} ({away}) vs {home_cn} ({home}) {away_score}-{home_score}"
+                    # Show Chinese team names only with scores, no English names
+                    line = f"{away_cn} vs {home_cn} {away_score}-{home_score}"
                 else:
-                    # No score yet; just show matchup
-                    line = f"{away_cn} ({away}) vs {home_cn} ({home})"
+                    # No score yet; just show matchup without English names
+                    line = f"{away_cn} vs {home_cn}"
                 result_lines.append(line)
             if result_lines:
-                reply = f"{date_display}賽事：\n" + "\n".join(result_lines)
+                # Use a simple divider line between each game for readability
+                divider = "-----"
+                reply = f"{date_display}賽事：\n" + f"\n{divider}\n".join(result_lines)
             else:
                 reply = f"{date_display}沒有 MLB 賽事"
         except Exception:
