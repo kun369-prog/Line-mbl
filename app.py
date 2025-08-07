@@ -21,7 +21,8 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_msg = event.message.text
+    # Trim whitespace and newlines from the incoming message
+    user_msg = event.message.text.strip()
     # Accept both traditional and simplified Chinese commands for today's game info
     if user_msg in ["今日賽事", "今日赛事"]:
         reply = "今天的 MLB 賽事有:\n1. 洋基 vs 紅襪\n2. 道奇 vs 響尾蛇"
