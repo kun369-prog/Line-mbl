@@ -107,6 +107,89 @@ def handle_message(event):
                 reply = f"{date_display}沒有 MLB 賽事"
         except Exception:
             reply = "無法取得比賽資料，請稍後再試"
+    elif user_msg == "盤口走勢":
+        """
+        Handle requests for odds trends for tomorrow's MLB games.  This command
+        uses the same local calendar day logic as the "明日賽事" command to determine
+        which date to query.  It attempts to fetch betting spreads from the
+        publicly-available The Odds API if an API key is provided via the
+        environment variable `ODDS_API_KEY`.  Results are formatted in Chinese
+        only with a simple divider between games.
+        """
+        try:
+            # Determine tomorrow's date in the Asia/Taipei timezone
+            try:
+                from zoneinfo import ZoneInfo
+                now_local = datetime.datetime.now(ZoneInfo("Asia/Taipei"))
+                tomorrow_local = now_local.date() + datetime.timedelta(days=1)
+            except Exception:
+                # Fallback: use system date when zoneinfo isn't available
+                today = datetime.date.today()
+                tomorrow_local = today + datetime.timedelta(days=1)
+            month_str = str(tomorrow_local.month)
+            day_str = str(tomorrow_local.day)
+            date_display = f"{month_str}月{day_str}日"
+            # Attempt to fetch odds using The Odds API
+            odds_api_key = os.environ.get("ODDS_API_KEY")
+            result_lines = []
+            if odds_api_key:
+                odds_url = (
+                    "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?"
+                    "regions=us&markets=spreads&oddsFormat=decimal&apiKey="
+                    + odds_api_key
+                )
+                res = requests.get(odds_url)
+                data = res.json()
+                # Iterate over returned events and pick those matching the local tomorrow date
+                for event in data:
+                    commence_time = event.get("commence_time")
+                    try:
+                        event_date = datetime.datetime.fromisoformat(
+                            commence_time.replace("Z", "+00:00")
+                        ).date()
+                    except Exception:
+                        continue
+                    if event_date != tomorrow_local:
+                        continue
+                    home = event.get("home_team")
+                    away = event.get("away_team")
+                    # Translate team names to Chinese
+                    home_cn = TEAM_TRANSLATIONS.get(home, home)
+                    away_cn = TEAM_TRANSLATIONS.get(away, away)
+                    spread_line = ""
+                    # Extract spread values from the first bookmaker that has spreads data
+                    for bookmaker in event.get("bookmakers", []):
+                        for market in bookmaker.get("markets", []):
+                            if market.get("key") == "spreads":
+                                outcomes = market.get("outcomes", [])
+                                home_spread = None
+                                away_spread = None
+                                for outcome in outcomes:
+                                    if outcome.get("name") == home:
+                                        home_spread = outcome.get("point")
+                                    elif outcome.get("name") == away:
+                                        away_spread = outcome.get("point")
+                                if home_spread is not None and away_spread is not None:
+                                    spread_line = (
+                                        f"{away_cn} {away_spread:+.1f} vs {home_cn} {home_spread:+.1f}"
+                                    )
+                                    break
+                        if spread_line:
+                            break
+                    if not spread_line:
+                        spread_line = f"{away_cn} vs {home_cn} - 無盤口資料"
+                    result_lines.append(spread_line)
+                if result_lines:
+                    divider = "-----"
+                    reply = (
+                        f"{date_display}盤口走勢：\n" + f"\n{divider}\n".join(result_lines)
+                    )
+                else:
+                    reply = f"{date_display}沒有 MLB 盤口走勢資料"
+            else:
+                reply = "尚未設定盤口 API 金鑰，請設定 ODDS_API_KEY 環境變數"
+        except Exception:
+            reply = "無法取得盤口走勢資料，請稍後再試"
     else:
         reply = f"你輸入的是：{user_msg}"
     line_bot_api.reply_message(
