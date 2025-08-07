@@ -2,7 +2,6 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-
 import os
 
 app = Flask(__name__)
@@ -23,8 +22,9 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_msg = event.message.text
-    if user_msg == "今日赛事":
-        reply = "今天的 MLB 赛事有:\n1. 洋基 vs 紅綺\n2. 道奇 vs 響尾蛇"
+    # Accept both traditional and simplified Chinese commands for today's game info
+    if user_msg in ["今日賽事", "今日赛事"]:
+        reply = "今天的 MLB 賽事有:\n1. 洋基 vs 紅襪\n2. 道奇 vs 響尾蛇"
     else:
         reply = f"你輸入的是：{user_msg}"
     line_bot_api.reply_message(
