@@ -75,16 +75,39 @@ def handle_message(event):
         day_str = str(tomorrow_local.day)
         date_display = f"{month_str}月{day_str}日"
         try:
-            # Fetch the schedule for the local tomorrow date
-            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={tomorrow_local.isoformat()}"
-            res = requests.get(url)
-            data = res.json()
-            games = []
-            dates = data.get('dates', [])
-            if dates:
-                games = dates[0].get('games', [])
+            # To accurately determine which games fall on the local tomorrow date (Asia/Taipei),
+            # query both the local tomorrow date and the day before it.  A game that starts late
+            # in the U.S. on the previous day may fall on the local tomorrow date after timezone conversion.
+            dates_to_query = [
+                tomorrow_local.isoformat(),
+                (tomorrow_local - datetime.timedelta(days=1)).isoformat()
+            ]
+            all_games = []
+            for qdate in dates_to_query:
+                url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={qdate}"
+                res = requests.get(url)
+                data = res.json()
+                dates_data = data.get('dates', [])
+                if dates_data:
+                    all_games.extend(dates_data[0].get('games', []))
+            # Filter games to only those whose start time (converted to Asia/Taipei) falls on the local tomorrow date.
             result_lines = []
-            for game in games:
+            for game in all_games:
+                # Determine the start time of the game (gameDate) and convert to Asia/Taipei
+                game_time_str = game.get('gameDate')
+                if not game_time_str:
+                    # Some data objects may use 'officialStartTime'
+                    game_time_str = game.get('officialStartTime')
+                try:
+                    # Parse as ISO datetime (replace trailing Z with +00:00 to make it ISO compliant)
+                    dt_utc = datetime.datetime.fromisoformat(game_time_str.replace('Z', '+00:00'))
+                    from zoneinfo import ZoneInfo  # imported lazily to avoid import errors on some platforms
+                    local_time = dt_utc.astimezone(ZoneInfo("Asia/Taipei"))
+                    if local_time.date() != tomorrow_local:
+                        continue
+                except Exception:
+                    # If parsing fails, skip this game
+                    continue
                 away = game['teams']['away']['team']['name']
                 home = game['teams']['home']['team']['name']
                 # Translate team names
@@ -141,8 +164,9 @@ def handle_message(event):
                 res = requests.get(odds_url)
                 data = res.json()
                 # Iterate over returned events and pick those matching the local tomorrow date
-                for event in data:
-                    commence_time = event.get("commence_time")
+                for odds_event in data:
+                    # Use a distinct variable name to avoid overwriting the MessageEvent
+                    commence_time = odds_event.get("commence_time")
                     try:
                         event_date = datetime.datetime.fromisoformat(
                             commence_time.replace("Z", "+00:00")
@@ -151,14 +175,14 @@ def handle_message(event):
                         continue
                     if event_date != tomorrow_local:
                         continue
-                    home = event.get("home_team")
-                    away = event.get("away_team")
+                    home = odds_event.get("home_team")
+                    away = odds_event.get("away_team")
                     # Translate team names to Chinese
                     home_cn = TEAM_TRANSLATIONS.get(home, home)
                     away_cn = TEAM_TRANSLATIONS.get(away, away)
                     spread_line = ""
                     # Extract spread values from the first bookmaker that has spreads data
-                    for bookmaker in event.get("bookmakers", []):
+                    for bookmaker in odds_event.get("bookmakers", []):
                         for market in bookmaker.get("markets", []):
                             if market.get("key") == "spreads":
                                 outcomes = market.get("outcomes", [])
