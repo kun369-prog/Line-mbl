@@ -60,16 +60,23 @@ def handle_message(event):
     user_msg = event.message.text.strip()
     # Use simplified and traditional Chinese for tomorrow's schedule
     if user_msg in ["明日賽事", "明日赛事"]:
-        # Calculate tomorrow's date
-        tomorrow = datetime.date.today() + datetime.timedelta(days=1)
-        date_iso = tomorrow.isoformat()
-        # Build human-readable date string like 8月7日
-        month_str = str(tomorrow.month)
-        day_str = str(tomorrow.day)
+        # Determine the local "tomorrow" date (Asia/Taipei) and use it for both display and schedule lookup.
+        # MLB schedules are organized by date, so the local calendar day should match the desired games.
+        try:
+            from zoneinfo import ZoneInfo
+            now_local = datetime.datetime.now(ZoneInfo("Asia/Taipei"))
+            tomorrow_local = now_local.date() + datetime.timedelta(days=1)
+        except Exception:
+            # Fallback: use system date when zoneinfo isn't available
+            today = datetime.date.today()
+            tomorrow_local = today + datetime.timedelta(days=1)
+        # Format the date display (e.g., 8月8日)
+        month_str = str(tomorrow_local.month)
+        day_str = str(tomorrow_local.day)
         date_display = f"{month_str}月{day_str}日"
         try:
-            # Fetch tomorrow's schedule and scores from MLB Stats API
-            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={date_iso}"
+            # Fetch the schedule for the local tomorrow date
+            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={tomorrow_local.isoformat()}"
             res = requests.get(url)
             data = res.json()
             games = []
